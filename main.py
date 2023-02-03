@@ -7,7 +7,10 @@ from src import utils
 from src.config import args
 from pathlib import Path
 
-device = torch.device('cuda:0') if torch.cuda.is_available() else 'cpu'
+
+device = torch.device('cuda:1') if torch.cuda.is_available() else torch.device("cpu")
+
+print(f"Using Device: {device}")
 
 # Build dir if does not exist & make sure using a
 # trailing / or not does not matter
@@ -52,7 +55,9 @@ for trial in range(args.num_trials):
     for t in range(args.num_iter):
 
         if (t + 1) % args.num_iter // 50:
+
             with torch.no_grad():
+                # print(cicada.img)
                 pydiffvg.imwrite(
                     cicada.img,
                     save_path + time_str + '.png',
@@ -81,6 +86,14 @@ for trial in range(args.num_trials):
                     save_path + time_str + f'_postP_{t-1}.png',
                     gamma=1,
                 )
+
+        # Perform Map-Elites search in the space and adopt new drawing if better scoring than current drawing
+        if t % 50 == 0:
+            search_results = cicada.run_evolutionary_search(t, args, limit=1, generations=5, seed=10)
+            if len(search_results) > 0:
+                current_fitness = cicada.evo_fitness(cicada.drawing, t, args)
+                if search_results[0]['fitness'] > current_fitness:
+                    cicada.drawing = search_results[0]['drawing']
 
         utils.printProgressBar(t + 1, args.num_iter, cicada.losses['global'].item())
 

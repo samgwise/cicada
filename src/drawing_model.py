@@ -9,9 +9,14 @@ import torch
 import pydiffvg
 import copy
 
+# Support for Map-Elites search
+import random
+import sqlite3
+from src.map_elites import MapElites, ResultProxy
+
 pydiffvg.set_print_timing(False)
 pydiffvg.set_use_gpu(torch.cuda.is_available())
-pydiffvg.set_device(torch.device('cuda:0') if torch.cuda.is_available() else 'cpu')
+pydiffvg.set_device(torch.device('cuda:1') if torch.cuda.is_available() else torch.device("cpu"))
 
 
 class Cicada:
@@ -106,6 +111,25 @@ class Cicada:
         )
         self.drawing.add_shapes(shapes, shape_groups, fixed=False)
 
+    def add_random_shapes_to_drawing(self, drawing, num_rnd_traces):
+        '''
+        This will NOT discard existing shapes
+        ---
+        input:
+            num_rnd_traces: Int;
+        '''
+        # TODO: Refactor add_random_shapes (on self) and this function together
+        if not drawing:
+            print("Recieved bad input for drawing in add_random_shapes_to_drawing()", drawing)
+        with torch.no_grad():
+            shapes, shape_groups = treebranch_initialization(
+                drawing,
+                num_rnd_traces,
+                self.drawing_area,
+            )
+            drawing.add_shapes(shapes, shape_groups, fixed=False)
+        return drawing
+
     def remove_traces(self, idx_list):
         '''
         Remove the traces indexed in idx_list
@@ -160,6 +184,98 @@ class Cicada:
         img = img[:, :, :3].unsqueeze(0).permute(0, 3, 1, 2)  # NHWC -> NCHW
         return img
 
+    def build_img_from_drawing(self, drawing, t, shapes=None, shape_groups=None):
+        if not shapes:
+            shapes = [trace.shape for trace in drawing.traces]
+            shape_groups = [trace.shape_group for trace in drawing.traces]
+        scene_args = pydiffvg.RenderFunction.serialize_scene(
+            self.canvas_w, self.canvas_h, shapes, shape_groups
+        )
+        img = self.render(self.canvas_w, self.canvas_h, 2, 2, t, None, *scene_args)
+        img = img[:, :, 3:4] * img[:, :, :3] + torch.ones(
+            img.shape[0], img.shape[1], 3, device=pydiffvg.get_device()
+        ) * (1 - img[:, :, 3:4])
+        img = img[:, :, :3].unsqueeze(0).permute(0, 3, 1, 2)  # NHWC -> NCHW
+        return img
+
+    def run_evolutionary_search(self, t, args, limit=None, seed=None, generations=3, resolution=10):
+        """
+        Run an evolutionary serarch process on the current drawing.
+        The search process involves a Map Elties style illumination search.
+        Parameters are:
+            limit=None - Up to how many elites to return at the conclusion of the search
+            seed=None - How many samples to seed in the initialisation of the search space
+            generations=3 - how many search iterations to perform. This is multiplied by the seed.
+            resulution=10 - how many bins to use per search dimension
+        """
+
+        # Conenct to a database (use ":memory:" for transient or "[filename].sqlite" for persistent storage)
+        db_con = sqlite3.connect(":memory:")
+        drawings = ResultProxy()
+
+        # Fitness closure
+        fitness = lambda drawing_ids: self.evo_fitness(drawings.get(drawing_ids), t, args).item()
+
+        # Input to output mapping closure
+        transform = lambda params: drawings.insert( self.prune_drawing(self.add_random_shapes_to_drawing(copy.deepcopy(self.drawing), max(1, min(30, int(params[1])))), params[0]) )
+
+        # Input mutation closure
+        # lambda sample, fitness, population: 
+        mutator = lambda input, _2, _3: [input[0] + (random.random() * 0.5) * 0.001, input[1] + (random.random() * 0.5) * 0.03]
+
+        # d0 - prune ratio, d1 - random shape count
+        search = MapElites([(0, 1), (1, 30)], db_con)
+
+        search.search_noise(transform, fitness, limit=seed)
+
+        for _ in range(1, generations):
+            search.search_elites(transform, mutator, fitness, mutations=1, limit=seed)
+
+        # Return all results as a drawing
+        return list( map(lambda row: {'drawing': drawings.get(search.decode_list(row[3])[0]), 'fitness': row[5]}, search.elites(limit=limit)) )
+
+    def evo_fitness(self, drawing, t, args):
+        """
+        Image fitness for use in evo searching
+        Scoring is inverted to rate better fit images as higher
+        """
+        # TODO: Refactor down to a common loss/scoring function for both gradient descent and EvoSearch 
+        img = self.build_img_from_drawing(drawing, t)
+
+        img_loss = (
+            torch.norm((img - self.img0) * self.mask)
+            if args.w_img > 0
+            else torch.tensor(0, device=self.device)
+        )
+
+        self.img = img.cpu().permute(0, 2, 3, 1).squeeze(0)
+
+        loss = 0
+
+        img_augs = []
+        for n in range(args.num_augs):
+            img_augs.append(self.augment_trans(img))
+        im_batch = torch.cat(img_augs)
+        img_features = self.model.encode_image(im_batch)
+        for n in range(args.num_augs):
+            loss += torch.cosine_similarity(
+                self.text_features, img_features[n : n + 1], dim=1
+            )
+            if args.use_neg_prompts:
+                loss -= (
+                    torch.cosine_similarity(
+                        self.text_features_neg1, img_features[n : n + 1], dim=1
+                    )
+                    * 0.3
+                )
+                loss -= (
+                    torch.cosine_similarity(
+                        self.text_features_neg2, img_features[n : n + 1], dim=1
+                    )
+                    * 0.3
+                )
+        return loss
+
     def run_epoch(self, t, args):
         self.points_optim.zero_grad()
         self.width_optim.zero_grad()
@@ -205,7 +321,7 @@ class Cicada:
         widths_loss = 0
         colors_loss = 0
 
-        for k in range(len(self.points_vars)):
+        for k in range(min(len(self.points_vars), len(self.drawing.traces))):
             if self.drawing.traces[k].is_fixed:
                 points_loss += torch.norm(self.points_vars[k] - self.points_vars0[k])
                 colors_loss += torch.norm(self.color_vars[k] - self.color_vars0[k])
@@ -309,3 +425,72 @@ class Cicada:
             self.drawing.remove_traces(inds)
 
         self.initialize_variables()
+
+    def prune_drawing(self, drawing, prune_ratio):
+        # TODO: refactor prune (on self) and prune drawing together
+        if not drawing:
+            print("Recieved bad input for drawing in prune_drawing()", drawing)
+        with torch.no_grad():
+
+            # Get points of tied traces
+            fixed_points = []
+            for trace in drawing.traces:
+                if trace.is_fixed:
+                    fixed_points += [
+                        x.unsqueeze(0)
+                        for i, x in enumerate(trace.shape.points)
+                        if i % 3 == 0
+                    ]  # only points the path goes through
+
+            # Compute distances
+            dists = []
+            if fixed_points:
+                fixed_points = torch.cat(fixed_points, 0)
+                for trace in drawing.traces:
+                    if trace.is_fixed:
+                        dists.append(-1000)  # We don't remove fixed traces
+                    else:
+                        points = [
+                            x.unsqueeze(0)
+                            for i, x in enumerate(trace.shape.points)
+                            if i % 3 == 0
+                        ]  # only points the path goes through
+                        min_dists = []
+                        for point in points:
+                            d = torch.norm(point - fixed_points, dim=1)
+                            d = min(d)
+                            min_dists.append(d.item())
+
+                        dists.append(min(min_dists))
+
+            # Compute losses
+            losses = []
+            for n, trace in enumerate(drawing.traces):
+                if trace.is_fixed:
+                    losses.append(1000)  # We don't remove fixed traces
+                else:
+                    # Compute the loss if we take out the k-th path
+                    shapes, shape_groups = drawing.all_shapes_but_kth(n)
+                    img = self.build_img_from_drawing(drawing, 5, shapes, shape_groups)
+                    img_augs = []
+                    for n in range(self.num_augs):
+                        img_augs.append(self.augment_trans(img))
+                    im_batch = torch.cat(img_augs)
+                    img_features = self.model.encode_image(im_batch)
+                    loss = 0
+                    for n in range(self.num_augs):
+                        loss -= torch.cosine_similarity(
+                            self.text_features, img_features[n : n + 1], dim=1
+                        )
+                    losses.append(loss.cpu().item())
+
+            # Compute scores
+            scores = [-0.01 * dists[k] ** (0.5) + losses[k] for k in range(len(losses))]
+
+            # Actual pruning
+            inds = utils.k_min_elements(
+                scores, int(prune_ratio * len(drawing.traces))
+            )
+            drawing.remove_traces(inds)
+
+        return drawing

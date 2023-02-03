@@ -1,4 +1,6 @@
 import sqlite3
+import json
+from pathlib import Path
 
 class Logger():
     def __init__(self, path):
@@ -7,12 +9,17 @@ class Logger():
 
         self.experiment_id = self.log_db.new_experiment()
 
-    def log_parameters(self, params):
+    def record_parameters(self, params):
+        self.log_db.set_parameters(self.experiment_id, params)
+
+    def record_completion(self, success):
+        self.log_db.set_completion(self.experiment_id, success)
 
     def log_progress(self, loss, tick):
-        self.log_db.
+        self.log_db.log_progress(self.experiment_id, loss, tick)
 
     def log_event(self, title, body, tick):
+        self.log_db.log_event(self.experiment_id, title, body, tick)
 
 
 class SQLiteLogger():
@@ -92,13 +99,29 @@ class SQLiteLogger():
         )"""
         db_cur.execute(create_event_table_sql)
 
-    def insert_oneshot(self, query):
+    def insert_oneshot(self, query, params=[]):
         db_cur = self.db_con.curser()
+        db_cur.execute(query, params)
         row_id = db_cur.lastrowid
         db_cur.connection.commit()
         return row_id
 
-    def new_experiment(self):
-        return self.insert_oneshot(self.self.insert_experiment_sql)
+    def update_oneshot(self, query, params=[]):
+        db_cur = self.db_con.curser()
+        db_cur.execute(query, params)
+        db_cur.connection.commit()
 
-    def log_progress(self, )
+    def new_experiment(self):
+        return self.insert_oneshot(self.insert_experiment_sql)
+
+    def set_parameters(self, experiment_id, parameters):
+        self.update_oneshot(self.update_params_sql, params=[json.dumps(parameters), experiment_id])
+
+    def set_completion(self, experiment_id, success):
+        self.update_oneshot(self.update_completion_sql, params=[experiment_id, success])
+
+    def log_progress(self, experiment_id, loss, tick):
+        return self.insert_oneshot(self.self.insert_progress_sql, params=[experiment_id, loss, tick])
+
+    def log_event(self, experiment_id, title, body, tick):
+        return self.insert_oneshot(self.self.insert_event_sql, params=[experiment_id, title, body, tick])

@@ -166,7 +166,7 @@ class MapElites():
 
     def search_elites_weighted(self, process, mutatate, fitness, limit=None):
         limit = limit or self.default_search_scale
-        for (rank, row) in enumerate(search.elites(limit=limit)):
+        for (rank, row) in enumerate(self.elites(limit=limit)):
             elite_input = decode_list(row[3])
             # Place more focus on current elite
             for _ in range(rank, limit):

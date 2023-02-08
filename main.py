@@ -7,10 +7,16 @@ from src import utils
 from src.config import args
 from pathlib import Path
 
+from src.logger import Logger
+
+log_path = Path('logs/')
+log_path.mkdir(parents=True, exist_ok=True)
+log = Logger(log_path)
 
 device = torch.device('cuda:1') if torch.cuda.is_available() else torch.device("cpu")
 
 print(f"Using Device: {device}")
+log.event("Init", f"Using Device: {device}", None)
 
 # Build dir if does not exist & make sure using a
 # trailing / or not does not matter
@@ -18,6 +24,9 @@ save_path = Path("results/").joinpath(args.save_path)
 save_path.mkdir(parents=True, exist_ok=True)
 save_path = str(save_path) + '/'
 
+log.event("Init", f"save_path: {save_path}", None)
+
+log.record_completion(False)
 
 t0 = time.time()
 
@@ -89,12 +98,17 @@ for trial in range(args.num_trials):
 
         # Perform Map-Elites search in the space and adopt new drawing if better scoring than current drawing
         if t % 50 == 0:
+            log.event("Generation", f"Evo Search", t)
             search_results = cicada.run_evolutionary_search(t, args, limit=1, generations=5, seed=10)
             if len(search_results) > 0:
                 current_fitness = cicada.evo_fitness(cicada.drawing, t, args)
                 if search_results[0]['fitness'] > current_fitness:
                     cicada.drawing = search_results[0]['drawing']
+                    log.event("Generation", f"Adopting new drawing from search, continueing gradient descent.", t)
+                else:
+                    log.event("Generation", f"Search did not find a better drawing, continueing gradient descent.", t)
 
+        log.progress(cicada.losses['global'].item(), t)
         utils.printProgressBar(t + 1, args.num_iter, cicada.losses['global'].item())
 
     pydiffvg.imwrite(
@@ -110,3 +124,5 @@ if args.build_gif:
 
 time_sec = round(time.time() - t0)
 print(f"Elapsed time: {time_sec//60} min, {time_sec-60*(time_sec//60)} seconds.")
+
+log.record_completion(True)

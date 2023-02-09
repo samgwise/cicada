@@ -87,6 +87,10 @@ parser.add_argument(
     "--build_gif", type=bool, help="build a gif of the process", default=False
 )
 
+parser.add_argument(
+    "--device", type=str, help="Name of the torch device to use (if available).", default="cuda:0"
+)
+
 args = parser.parse_args()
 
 args.drawing_area = {'x0': args.x0, 'x1': args.x1, 'y0': args.y0, 'y1': args.y1}

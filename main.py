@@ -13,14 +13,16 @@ log_path = Path('logs/')
 log_path.mkdir(parents=True, exist_ok=True)
 log = Logger(log_path)
 
-device = torch.device('cuda:1') if torch.cuda.is_available() else torch.device("cpu")
+log.record_parameters(utils.obj2dict(args))
+
+device = torch.device(args.device) if torch.cuda.is_available() else torch.device("cpu")
 
 print(f"Using Device: {device}")
 log.event("Init", f"Using Device: {device}", None)
 
 # Build dir if does not exist & make sure using a
 # trailing / or not does not matter
-save_path = Path("results/").joinpath(args.save_path)
+save_path = Path("results/").joinpath(f"{log.experiment_id}-{args.save_path}")
 save_path.mkdir(parents=True, exist_ok=True)
 save_path = str(save_path) + '/'
 

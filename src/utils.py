@@ -158,3 +158,13 @@ def get_augment_trans(canvas_width, normalize_clip=False):
         )
 
     return augment_trans
+
+# Convert and object to a dict (so that it can be saved)
+# src: https://stackoverflow.com/questions/63893843/how-to-convert-nested-object-to-nested-dictionary-in-python
+def obj2dict(instance, built_dict={}):
+    if not hasattr(instance, "__dict__"):
+        return instance
+    new_subdic = vars(instance)
+    for key, value in new_subdic.items():
+        new_subdic[key] = obj2dict(value)
+    return new_subdic

@@ -16,8 +16,6 @@ from src.map_elites import MapElites, ResultProxy
 
 pydiffvg.set_print_timing(False)
 pydiffvg.set_use_gpu(torch.cuda.is_available())
-pydiffvg.set_device(torch.device('cuda:1') if torch.cuda.is_available() else torch.device("cpu"))
-
 
 class Cicada:
     def __init__(self, args, device):
@@ -30,6 +28,8 @@ class Cicada:
         self.drawing = Drawing(args.canvas_w, args.canvas_h)
         self.drawing_area = args.drawing_area
         self.num_augs = args.num_augs
+
+        pydiffvg.set_device(torch.device(args.device) if torch.cuda.is_available() else torch.device("cpu"))
 
     def process_text(self, args):
         self.nouns, noun_prompts = get_nouns()

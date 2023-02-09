@@ -1,7 +1,9 @@
 import sqlite3
 import json
 from pathlib import Path
+import csv
 
+# A global stash for sharing log writers
 logger_stash = {}
 
 class Logger():
@@ -29,6 +31,25 @@ class Logger():
 
     def event(self, title, body, tick):
         self.log_db.log_event(self.experiment_id, title, body, tick)
+
+    ### Export methods ###
+    def iterable_to_file(self, iter, file_path, format=None):
+        if format == 'csv':
+            with open('file_path', 'w', newline='') as csvfile:
+                writer = csv.writer(csvfile, quoting=csv.QUOTE_MINIMAL)
+                for 
+        else:
+            print(f"Unkonwn format '{format}', printing STDOUT")
+
+    def events_to_file(self, file_path, format='csv'):
+        self.iterable_to_file(self.log_db.get_events(self.experiment_id), file_path, format=format) 
+
+    def progress_to_file(self, file_path, format='csv'):
+        self.iterable_to_file(self.log_db.get_progress(self.experiment_id), file_path, format=format)
+
+    def experiment_to_file(self, file_path, format='csv'):
+        self.iterable_to_file(self.log_db.get_experiment(self.experiment_id), file_path, format=format)
+
 
 
 class SQLiteLogger():
@@ -69,7 +90,7 @@ class SQLiteLogger():
         self.update_completion_sql = """
         UPDATE experiment SET
             completed = ?,
-            run_duration_seconds = unixepoch('now', 'localtime') - unixepoch(start_time, 'localtime')
+            run_duration_seconds = strftime('%s', datetime('now', 'localtime')) - strftime('%s', start_time)
             WHERE experiment_id = ?
         """
 

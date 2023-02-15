@@ -128,3 +128,8 @@ time_sec = round(time.time() - t0)
 print(f"Elapsed time: {time_sec//60} min, {time_sec-60*(time_sec//60)} seconds.")
 
 log.record_completion(True)
+# Save logs along side the SVGs
+report_path = Path(save_path)
+log.events_to_file(report_path.joinpath("events.csv"))
+log.progress_to_file(report_path.joinpath("progress.csv"))
+log.experiment_to_file(report_path.joinpath("experiment.csv"))

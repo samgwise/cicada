@@ -10,6 +10,7 @@ class Logger():
     def __init__(self, path):
         self.log_path = path
         stash_key = str(path)
+        # Check if a logging context exists alrady for the log location.
         if stash_key in logger_stash:
             self.log_db = logger_stash[stash_key]['log_db']
             self.experiment_id = logger_stash[stash_key]['experiment_id']
@@ -33,22 +34,34 @@ class Logger():
         self.log_db.log_event(self.experiment_id, title, body, tick)
 
     ### Export methods ###
-    def iterable_to_file(self, iter, file_path, format=None):
+    def iterable_to_file(self, iter, file_path, keys=None, format=None):
+        """ Generic method for saving an iterable to a file.
+        This is only meant for internal use by the logger class
+        """
         if format == 'csv':
-            with open('file_path', 'w', newline='') as csvfile:
+            with open(file_path, 'w', newline='') as csvfile:
                 writer = csv.writer(csvfile, quoting=csv.QUOTE_MINIMAL)
-                for 
+                if keys:
+                    writer.writerow(keys)
+                writer.writerows(iter)
         else:
-            print(f"Unkonwn format '{format}', printing STDOUT")
+            print(f"Unkonwn format '{format}', printing to STDOUT")
+            print(keys)
+            for row in iter:
+                    print(row)
+
 
     def events_to_file(self, file_path, format='csv'):
-        self.iterable_to_file(self.log_db.get_events(self.experiment_id), file_path, format=format) 
+        keys, rows = self.log_db.get_events(self.experiment_id)
+        self.iterable_to_file(rows, file_path, format=format, keys=keys) 
 
     def progress_to_file(self, file_path, format='csv'):
-        self.iterable_to_file(self.log_db.get_progress(self.experiment_id), file_path, format=format)
+        keys, rows = self.log_db.get_progress(self.experiment_id)
+        self.iterable_to_file(rows, file_path, format=format, keys=keys)
 
     def experiment_to_file(self, file_path, format='csv'):
-        self.iterable_to_file(self.log_db.get_experiment(self.experiment_id), file_path, format=format)
+        keys, rows = self.log_db.get_experiment(self.experiment_id)
+        self.iterable_to_file(rows, file_path, format=format, keys=keys)
 
 
 
@@ -92,6 +105,18 @@ class SQLiteLogger():
             completed = ?,
             run_duration_seconds = strftime('%s', datetime('now', 'localtime')) - strftime('%s', start_time)
             WHERE experiment_id = ?
+        """
+
+        self.select_events_sql = """
+        SELECT * FROM event_log WHERE experiment_id = ?
+        """
+
+        self.select_progress_sql = """
+        SELECT * FROM progress_log WHERE experiment_id = ?
+        """
+
+        self.select_experiment_sql = """
+        SELECT * FROM experiment WHERE experiment_id = ?
         """
 
         ### DB Init ###
@@ -142,6 +167,14 @@ class SQLiteLogger():
         db_cur.execute(query, params)
         db_cur.connection.commit()
 
+    def select_oneshot(self, query, params=[]):
+        """Returns the results of a select query
+            The First element contains column names and the second is a row iterable.
+        """
+        db_cur = self.db_con.cursor()
+        db_cur.execute(query, params)
+        return [description[0] for description in db_cur.description], db_cur.fetchall()
+
     def new_experiment(self):
         return self.insert_oneshot(self.insert_experiment_sql)
 
@@ -157,3 +190,14 @@ class SQLiteLogger():
 
     def log_event(self, experiment_id, title, body, tick):
         return self.insert_oneshot(self.insert_event_sql, params=[experiment_id, title, body, tick])
+
+    ### Reader Methods
+    
+    def get_events(self, experiment_id):
+        return self.select_oneshot(self.select_events_sql, params=[experiment_id])
+
+    def get_progress(self, experiment_id):
+        return self.select_oneshot(self.select_progress_sql, params=[experiment_id])
+
+    def get_experiment(self, experiment_id):
+        return self.select_oneshot(self.select_experiment_sql, params=[experiment_id])

@@ -11,6 +11,11 @@ import pydiffvg
 import copy
 import numpy as np
 
+# Support for Map-Elites search
+import random
+import sqlite3
+from src.map_elites import MapElites, ResultProxy
+
 pydiffvg.set_print_timing(False)
 pydiffvg.set_use_gpu(torch.cuda.is_available())
 pydiffvg.set_device(torch.device('cuda:0') if torch.cuda.is_available() else 'cpu')

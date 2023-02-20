@@ -6,13 +6,11 @@ from src.drawing_model import Cicada
 device = torch.device('cuda:1') if torch.cuda.is_available() else 'cpu'
 
 prompt_A = 'A tall red chair.'
-prompt_B = 'A short blue chair.'
 NUM_ITER = 5
 SVG_PATH = "data/drawing_chair.svg"
-args.drawing_area = {'x0': args.x0, 'x1': args.x1, 'y0': 0.5, 'y1': 1.0}
+args.evo_search = True
 
-
-class TestPromptChange:
+class TestEvoSearch:
     def test_prompt_change(self):
         # Using prompt A #################
         args.prompt = prompt_A
@@ -42,9 +40,8 @@ class TestPromptChange:
 
         assert torch.norm(cicada.text_features - text_features_A) == 0
 
-        # Using prompt B #################
-        args.prompt = prompt_B
-        cicada.process_text(args.prompt)
+        # Running Evo Search
+        cicada.evo_search(t, args)
 
         for t in range(NUM_ITER):
             cicada.run_epoch()

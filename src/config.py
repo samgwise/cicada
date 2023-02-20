@@ -29,7 +29,7 @@ parser.add_argument("--max_width", type=int, help="max px width", default=40)
 
 # Algorithm parameters
 parser.add_argument(
-    "--num_iter", type=int, help="maximum algorithm iterations", default=1500
+    "--num_iter", type=int, help="maximum algorithm iterations", default=500
 )
 parser.add_argument(
     "--w_points",
@@ -86,7 +86,18 @@ parser.add_argument(
 parser.add_argument(
     "--build_gif", type=bool, help="build a gif of the process", default=False
 )
-
+parser.add_argument(
+    "--lr_boost", type=bool, help="mutate using lr boost", default=False
+)
+parser.add_argument(
+    "--respawn_traces", type=bool, help="mutate respawning traces", default=False
+)
+parser.add_argument(
+    "--area_kill", type=bool, help="mutate area kill", default=False
+)
+parser.add_argument(
+    "--evo_search", type=bool, help="run the evolutionary search", default=False
+)
 args = parser.parse_args()
 
 args.drawing_area = {'x0': args.x0, 'x1': args.x1, 'y0': args.y0, 'y1': args.y1}

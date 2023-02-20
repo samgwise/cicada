@@ -107,6 +107,9 @@ for trial in range(args.num_trials):
                     gamma=1,
                 )
 
+        if t == args.num_iter // 2 and args.evo_search:
+            cicada.evo_search()
+
         utils.printProgressBar(t + 1, args.num_iter, cicada.losses['global'].item())
 
     pydiffvg.imwrite(

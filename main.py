@@ -107,8 +107,18 @@ for trial in range(args.num_trials):
                     gamma=1,
                 )
 
-        if t == args.num_iter // 2 and args.evo_search:
-            cicada.evo_search()
+        if t == 50 and args.evo_search:
+            # cicada.evo_search()
+            log.event("Generation", f"Evo Search", t)
+            search_results = cicada.run_evolutionary_search(t, args, limit=1, generations=5, seed=10)
+            if len(search_results) > 0:
+                current_fitness = cicada.evo_fitness(cicada.drawing, t, args)
+                if search_results[0]['fitness'] > current_fitness:
+                    cicada.drawing = search_results[0]['drawing']
+                    log.event("Generation", f"Adopting new drawing from search, continueing gradient descent.", t)
+                else:
+                    log.event("Generation", f"Search did not find a better drawing, continueing gradient descent.", t)
+
 
         utils.printProgressBar(t + 1, args.num_iter, cicada.losses['global'].item())
 

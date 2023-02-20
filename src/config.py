@@ -95,6 +95,13 @@ parser.add_argument(
 parser.add_argument(
     "--area_kill", type=bool, help="mutate area kill", default=False
 )
+parser.add_argument(
+    "--evo_search", type=bool, help="run the evolutionary search", default=False
+)
+
+parser.add_argument(
+    "--device", type=str, help="Name of the torch device to use (if available).", default="cuda:0"
+)
 
 args = parser.parse_args()
 

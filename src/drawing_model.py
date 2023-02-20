@@ -18,7 +18,6 @@ from src.map_elites import MapElites, ResultProxy
 
 pydiffvg.set_print_timing(False)
 pydiffvg.set_use_gpu(torch.cuda.is_available())
-pydiffvg.set_device(torch.device('cuda:1') if torch.cuda.is_available() else torch.device("cpu"))
 
 
 class Cicada:
@@ -213,99 +212,14 @@ class Cicada:
             shapes = [trace.shape for trace in drawing.traces]
             shape_groups = [trace.shape_group for trace in drawing.traces]
         scene_args = pydiffvg.RenderFunction.serialize_scene(
-            self.canvas_w, self.canvas_h, shapes, shape_groups
+            self.drawing.canvas_width, self.drawing.canvas_height, shapes, shape_groups
         )
-        img = self.render(self.canvas_w, self.canvas_h, 2, 2, t, None, *scene_args)
+        img = self.render(self.drawing.canvas_width, self.drawing.canvas_height, 2, 2, t, None, *scene_args)
         img = img[:, :, 3:4] * img[:, :, :3] + torch.ones(
             img.shape[0], img.shape[1], 3, device=pydiffvg.get_device()
         ) * (1 - img[:, :, 3:4])
         img = img[:, :, :3].unsqueeze(0).permute(0, 3, 1, 2)  # NHWC -> NCHW
         return img
-
-    def run_evolutionary_search(self, t, args, limit=None, seed=None, generations=3, resolution=10):
-        """
-        Run an evolutionary serarch process on the current drawing.
-        The search process involves a Map Elties style illumination search.
-        Parameters are:
-            limit=None - Up to how many elites to return at the conclusion of the search
-            seed=None - How many samples to seed in the initialisation of the search space
-            generations=3 - how many search iterations to perform. This is multiplied by the seed.
-            resulution=10 - how many bins to use per search dimension
-        """
-
-        # Conenct to a database (use ":memory:" for transient or "[filename].sqlite" for persistent storage)
-        db_con = sqlite3.connect(":memory:")
-        drawings = ResultProxy()
-
-        # Fitness closure
-        fitness = lambda drawing_ids: self.evo_fitness(drawings.get(drawing_ids), t, args).item()
-
-        # Input to output mapping closure
-        transform = lambda params: drawings.insert( self.prune_drawing(self.add_random_shapes_to_drawing(copy.deepcopy(self.drawing), max(1, min(30, int(params[1])))), params[0]) )
-
-        # Input mutation closure
-        # lambda sample, fitness, population: 
-        mutator = lambda input, _2, _3: [input[0] + (random.random() * 0.5) * 0.001, input[1] + (random.random() * 0.5) * 0.03]
-
-        # d0 - prune ratio, d1 - random shape count
-        search = MapElites([(0, 1), (1, 30)], db_con)
-
-        search.search_noise(transform, fitness, limit=seed)
-
-        for _ in range(1, generations):
-            search.search_elites(transform, mutator, fitness, mutations=1, limit=seed)
-
-        # Return all results as a drawing
-        return list( map(lambda row: {'drawing': drawings.get(search.decode_list(row[3])[0]), 'fitness': row[5]}, search.elites(limit=limit)) )
-
-    def evo_fitness(self, drawing, t, args):
-        """
-        Image fitness for use in evo searching
-        Scoring is inverted to rate better fit images as higher
-        """
-        # TODO: Refactor down to a common loss/scoring function for both gradient descent and EvoSearch 
-        img = self.build_img_from_drawing(drawing, t)
-
-        img_loss = (
-            torch.norm((img - self.img0) * self.mask)
-            if args.w_img > 0
-            else torch.tensor(0, device=self.device)
-        )
-
-        self.img = img.cpu().permute(0, 2, 3, 1).squeeze(0)
-
-        loss = 0
-
-        img_augs = []
-        for n in range(args.num_augs):
-            img_augs.append(self.augment_trans(img))
-        im_batch = torch.cat(img_augs)
-        img_features = self.model.encode_image(im_batch)
-        for n in range(args.num_augs):
-            loss += torch.cosine_similarity(
-                self.text_features, img_features[n : n + 1], dim=1
-            )
-            if args.use_neg_prompts:
-                loss -= (
-                    torch.cosine_similarity(
-                        self.text_features_neg1, img_features[n : n + 1], dim=1
-                    )
-                    * 0.3
-                )
-                loss -= (
-                    torch.cosine_similarity(
-                        self.text_features_neg2, img_features[n : n + 1], dim=1
-                    )
-                    * 0.3
-                )
-        return loss
-
-    def evo_search(self, t, args):
-        search_results = self.run_evolutionary_search(t, args, limit=1, generations=5, seed=10)
-        if len(search_results) > 0:
-            current_fitness = self.evo_fitness(self.drawing, t, args)
-            if search_results[0]['fitness'] > current_fitness:
-                self.drawing = search_results[0]['drawing']
 
     def set_penalizers(
         self,
@@ -407,6 +321,91 @@ class Cicada:
 
         self.drawing.remove_traces(removal_inds)
         self.add_random_shapes(len(removal_inds))
+
+    def evo_search(self, log, t, args):
+        log.event("Generation", f"Evo Search", t)
+        search_results = self.run_evolutionary_search(t, args, limit=1, generations=5, seed=10)
+        if len(search_results) > 0:
+            current_fitness = self.evo_fitness(self.drawing, t, args)
+            if search_results[0]['fitness'] > current_fitness:
+                self.drawing = search_results[0]['drawing']
+                log.event("Generation", f"Adopting new drawing from search, continueing gradient descent.", t)
+            else:
+                log.event("Generation", f"Search did not find a better drawing, continueing gradient descent.", t)
+
+
+    def run_evolutionary_search(self, t, args, limit=None, seed=None, generations=3, resolution=10):
+        """
+        Run an evolutionary serarch process on the current drawing.
+        The search process involves a Map Elties style illumination search.
+        Parameters are:
+            limit=None - Up to how many elites to return at the conclusion of the search
+            seed=None - How many samples to seed in the initialisation of the search space
+            generations=3 - how many search iterations to perform. This is multiplied by the seed.
+            resulution=10 - how many bins to use per search dimension
+        """
+
+        # Conenct to a database (use ":memory:" for transient or "[filename].sqlite" for persistent storage)
+        db_con = sqlite3.connect(":memory:")
+        drawings = ResultProxy()
+
+        # Fitness closure
+        fitness = lambda drawing_ids: self.evo_fitness(drawings.get(drawing_ids), t, args).item()
+
+        # Input to output mapping closure
+        transform = lambda params: drawings.insert( self.prune_drawing(self.add_random_shapes_to_drawing(copy.deepcopy(self.drawing), max(1, min(30, int(params[1])))), params[0]) )
+
+        # Input mutation closure
+        # lambda sample, fitness, population: 
+        mutator = lambda input, _2, _3: [input[0] + (random.random() * 0.5) * 0.001, input[1] + (random.random() * 0.5) * 0.03]
+
+        # d0 - prune ratio, d1 - random shape count
+        search = MapElites([(0, 1), (1, 30)], db_con)
+
+        search.search_noise(transform, fitness, limit=seed)
+
+        for _ in range(1, generations):
+            search.search_elites(transform, mutator, fitness, mutations=1, limit=seed)
+
+        # Return all results as a drawing
+        return list( map(lambda row: {'drawing': drawings.get(search.decode_list(row[3])[0]), 'fitness': row[5]}, search.elites(limit=limit)) )
+
+    def evo_fitness(self, drawing, t, args):
+        """
+        Image fitness for use in evo searching
+        Scoring is inverted to rate better fit images as higher
+        """
+        # TODO: Refactor down to a common loss/scoring function for both gradient descent and EvoSearch 
+        img = self.build_img_from_drawing(drawing, t)
+
+        img_loss = (
+            torch.norm((img - self.img0) * self.mask)
+            if args.w_img > 0
+            else torch.tensor(0, device=self.device)
+        )
+
+        self.img = img.cpu().permute(0, 2, 3, 1).squeeze(0)
+
+        loss = 0
+
+        img_augs = []
+        for n in range(args.num_augs):
+            img_augs.append(self.augment_trans(img))
+
+        im_batch = torch.cat(img_augs)
+        img_features = self.model.encode_image(im_batch)
+        for n in range(args.num_augs):
+            loss += torch.cosine_similarity(
+                self.text_features, img_features[n : n + 1], dim=1
+            )
+            for neg_text_feat in self.neg_text_features:
+                loss += (
+                    torch.cosine_similarity(
+                        neg_text_feat, img_features[n : n + 1], dim=1
+                    )
+                    * 0.3
+                )
+        return loss
 
     def run_epoch(self, t="deprecated", num_augs=4):
         self.points_optim.zero_grad()
@@ -566,7 +565,9 @@ class Cicada:
 
         self.initialize_variables()
 
-    def prune_drawing(self, drawing, prune_ratio):
+
+
+    def prune_drawing(self, drawing, prune_ratio, num_augs=4):
         # TODO: refactor prune (on self) and prune drawing together
         if not drawing:
             print("Recieved bad input for drawing in prune_drawing()", drawing)
@@ -613,12 +614,12 @@ class Cicada:
                     shapes, shape_groups = drawing.all_shapes_but_kth(n)
                     img = self.build_img_from_drawing(drawing, 5, shapes, shape_groups)
                     img_augs = []
-                    for n in range(self.num_augs):
+                    for n in range(num_augs):
                         img_augs.append(self.augment_trans(img))
                     im_batch = torch.cat(img_augs)
                     img_features = self.model.encode_image(im_batch)
                     loss = 0
-                    for n in range(self.num_augs):
+                    for n in range(num_augs):
                         loss -= torch.cosine_similarity(
                             self.text_features, img_features[n : n + 1], dim=1
                         )

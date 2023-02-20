@@ -3,15 +3,12 @@ import copy
 from src.config import args
 from src.drawing_model import Cicada
 
-device = torch.device('cuda:1') if torch.cuda.is_available() else 'cpu'
-
 NUM_ITER = 5
-
 
 class TestTraceFixing:
     def test_prompt_change(self):
         cicada = Cicada(
-            device=device,
+            device=args.device,
             canvas_w=args.canvas_w,
             canvas_h=args.canvas_h,
             drawing_area=args.drawing_area,

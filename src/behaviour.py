@@ -4,8 +4,8 @@ from src.processing import get_augment_trans
 
 
 class TextBehaviour:
-    def __init__(self, im_width=224, normalize_clip=True):
-        self.device = "cuda:0" if torch.cuda.is_available() else "cpu"
+    def __init__(self, device, im_width=224, normalize_clip=True):
+        self.device = device
         self.model, preprocess = clip.load('ViT-B/32', self.device, jit=False)
         self.augment_trans = get_augment_trans(im_width, normalize_clip)
         self.behaviours = []

@@ -8,13 +8,30 @@ from src.config import args
 from pathlib import Path
 from src.behaviour import TextBehaviour
 
-device = torch.device('cuda:0') if torch.cuda.is_available() else 'cpu'
+from src.logger import Logger
+
+log_path = Path('logs/')
+log_path.mkdir(parents=True, exist_ok=True)
+log = Logger(log_path)
+
+log.record_parameters(utils.obj2dict(args))
+
+device = torch.device(args.device) if torch.cuda.is_available() else torch.device("cpu")
+
+print(f"Using Device: {device}")
+log.event("Init", f"Using Device: {device}", None)
 
 # Build dir if does not exist & make sure using a
 # trailing / or not does not matter
 save_path = Path("results/").joinpath(args.save_path)
 save_path.mkdir(parents=True, exist_ok=True)
 save_path = str(save_path) + '/'
+
+
+log.event("Init", f"save_path: {save_path}", None)
+
+log.record_completion(False)
+
 
 text_behaviour = TextBehaviour()
 text_behaviour.add_behaviour("drawing", "photo")
@@ -119,6 +136,7 @@ for trial in range(args.num_trials):
                 else:
                     log.event("Generation", f"Search did not find a better drawing, continueing gradient descent.", t)
 
+        log.progress(cicada.losses['global'].item(), t)
 
         utils.printProgressBar(t + 1, args.num_iter, cicada.losses['global'].item())
 
@@ -136,3 +154,11 @@ if args.build_gif:
 
 time_sec = round(time.time() - t0)
 print(f"Elapsed time: {time_sec//60} min, {time_sec-60*(time_sec//60)} seconds.")
+
+
+log.record_completion(True)
+# Save logs along side the SVGs
+report_path = Path(save_path)
+log.events_to_file(report_path.joinpath("events.csv"))
+log.progress_to_file(report_path.joinpath("progress.csv"))
+log.experiment_to_file(report_path)

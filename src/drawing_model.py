@@ -210,6 +210,20 @@ class Cicada:
         img = img[:, :, :3].unsqueeze(0).permute(0, 3, 1, 2)  # NHWC -> NCHW
         return img
 
+    def build_img_from_drawing(self, drawing, t, shapes=None, shape_groups=None):
+        if not shapes:
+            shapes = [trace.shape for trace in drawing.traces]
+            shape_groups = [trace.shape_group for trace in drawing.traces]
+        scene_args = pydiffvg.RenderFunction.serialize_scene(
+            self.drawing.canvas_width, self.drawing.canvas_height, shapes, shape_groups
+        )
+        img = self.render(self.drawing.canvas_width, self.drawing.canvas_height, 2, 2, t, None, *scene_args)
+        img = img[:, :, 3:4] * img[:, :, :3] + torch.ones(
+            img.shape[0], img.shape[1], 3, device=pydiffvg.get_device()
+        ) * (1 - img[:, :, 3:4])
+        img = img[:, :, :3].unsqueeze(0).permute(0, 3, 1, 2)  # NHWC -> NCHW
+        return img
+
     def set_penalizers(
         self,
         w_points=0.001,
@@ -369,22 +383,17 @@ class Cicada:
         img_augs = []
         for n in range(args.num_augs):
             img_augs.append(self.augment_trans(img))
+
         im_batch = torch.cat(img_augs)
         img_features = self.model.encode_image(im_batch)
         for n in range(args.num_augs):
-            loss += torch.cosine_similarity(
+            loss -= torch.cosine_similarity(
                 self.text_features, img_features[n : n + 1], dim=1
             )
-            if args.use_neg_prompts:
-                loss -= (
+            for neg_text_feat in self.neg_text_features:
+                loss += (
                     torch.cosine_similarity(
-                        self.text_features_neg1, img_features[n : n + 1], dim=1
-                    )
-                    * 0.3
-                )
-                loss -= (
-                    torch.cosine_similarity(
-                        self.text_features_neg2, img_features[n : n + 1], dim=1
+                        neg_text_feat, img_features[n : n + 1], dim=1
                     )
                     * 0.3
                 )
@@ -562,7 +571,7 @@ class Cicada:
 
 
 
-    def prune_drawing(self, drawing, prune_ratio):
+    def prune_drawing(self, drawing, prune_ratio, num_augs=4):
         # TODO: refactor prune (on self) and prune drawing together
         if not drawing:
             print("Recieved bad input for drawing in prune_drawing()", drawing)
@@ -609,12 +618,12 @@ class Cicada:
                     shapes, shape_groups = drawing.all_shapes_but_kth(n)
                     img = self.build_img_from_drawing(drawing, 5, shapes, shape_groups)
                     img_augs = []
-                    for n in range(self.num_augs):
+                    for n in range(num_augs):
                         img_augs.append(self.augment_trans(img))
                     im_batch = torch.cat(img_augs)
                     img_features = self.model.encode_image(im_batch)
                     loss = 0
-                    for n in range(self.num_augs):
+                    for n in range(num_augs):
                         loss -= torch.cosine_similarity(
                             self.text_features, img_features[n : n + 1], dim=1
                         )

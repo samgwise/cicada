@@ -10,11 +10,18 @@ import torch
 import pydiffvg
 import copy
 import numpy as np
+from pathlib import Path
+from src.logger import Logger
+
 
 # Support for Map-Elites search
 import random
 import sqlite3
 from src.map_elites import MapElites, ResultProxy
+
+log_path = Path('logs/')
+log_path.mkdir(parents=True, exist_ok=True)
+log = Logger(log_path)
 
 pydiffvg.set_print_timing(False)
 pydiffvg.set_use_gpu(torch.cuda.is_available())
@@ -322,7 +329,7 @@ class Cicada:
         self.drawing.remove_traces(removal_inds)
         self.add_random_shapes(len(removal_inds))
 
-    def evo_search(self, log, t, args):
+    def evo_search(self, t, args):
         log.event("Generation", f"Evo Search", t)
         search_results = self.run_evolutionary_search(t, args, limit=1, generations=5, seed=10)
         if len(search_results) > 0:

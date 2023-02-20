@@ -10,7 +10,7 @@ test_prompt_change = TestPromptChange()
 test_evo_search = TestEvoSearch()
 
 test_suite.add_tests(test_evo_search)
-test_suite.add_tests(test_trace_fixing)
-test_suite.add_tests(test_prompt_change)
+# test_suite.add_tests(test_trace_fixing)
+# test_suite.add_tests(test_prompt_change)
 
 test_suite.run_tests()

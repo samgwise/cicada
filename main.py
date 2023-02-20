@@ -129,7 +129,7 @@ for trial in range(args.num_trials):
                 )
 
         if t == 50 and args.evo_search:
-            cicada.evo_search(log, t, args)
+            cicada.evo_search(t, args)
 
         log.progress(cicada.losses['global'].item(), t)
 

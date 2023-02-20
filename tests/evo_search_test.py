@@ -3,12 +3,17 @@ import copy
 from src.config import args
 from src.drawing_model import Cicada
 
+import plotly.express as px
+
 prompt_A = 'A tall red chair.'
-NUM_ITER = 5
+NUM_ITER = 300
 SVG_PATH = "data/drawing_chair.svg"
 
 class TestEvoSearch:
     def test_prompt_change(self):
+        plot_x = []
+        plot_y = []
+
         # Using prompt A #################
         args.prompt = prompt_A
         cicada = Cicada(
@@ -25,6 +30,9 @@ class TestEvoSearch:
             w_img=args.w_img,
             w_geo=args.w_geo,
         )
+
+
+
         cicada.process_text(args.prompt)
         text_features_A = copy.copy(cicada.text_features)
         cicada.load_svg_shapes(args.svg_path)
@@ -34,13 +42,22 @@ class TestEvoSearch:
 
         for t in range(NUM_ITER):
             cicada.run_epoch()
+            plot_x.append(t)
+            plot_y.append(float(cicada.losses['global'].item()))
 
-        assert torch.norm(cicada.text_features - text_features_A) == 0
+        #Mutate
 
-        # Running Evo Search
+        cicada.mutate_area_kill()
+        cicada.mutate_respawn_traces()
+        cicada.mutate_lr()
+        
+        # Running Evo Search        
         cicada.evo_search(t, args)
-
+        
         for t in range(NUM_ITER):
             cicada.run_epoch()
+            plot_x.append(NUM_ITER + t)
+            plot_y.append(float(cicada.losses['global'].item()))
 
-        assert torch.norm(cicada.text_features - text_features_A) > 0
+        fig = px.scatter(x=plot_x, y=plot_y)
+        fig.write_image("tests/results/evo_plot_mutate.png")

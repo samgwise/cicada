@@ -126,6 +126,27 @@ class Cicada:
         )
         self.drawing.add_shapes(shapes, shape_groups, fixed=False)
 
+
+    def add_random_shapes_to_drawing(self, drawing, num_rnd_traces):
+        '''
+        This will NOT discard existing shapes
+        ---
+        input:
+            num_rnd_traces: Int;
+        '''
+        # TODO: Refactor add_random_shapes (on self) and this function together
+        if not drawing:
+            print("Recieved bad input for drawing in add_random_shapes_to_drawing()", drawing)
+        with torch.no_grad():
+            shapes, shape_groups = treebranch_initialization(
+                drawing,
+                num_rnd_traces,
+                self.drawing_area,
+            )
+            drawing.add_shapes(shapes, shape_groups, fixed=False)
+        return drawing
+
+
     def remove_traces(self, idx_list):
         '''
         Remove the traces indexed in idx_list

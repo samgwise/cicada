@@ -1,6 +1,7 @@
 from src.drawing_model import Cicada
 import plotly.express as px
 import inspect
+from src import utils
 
 class Test_Suite:
     """Setup the test, log the outputs, status, completion and all tests"""
@@ -51,7 +52,7 @@ def load_cicada(test_args):
 def run_test(test_args, test_name):
     """Overwwrite args depending on the required setup"""
 
-    plot_x = []
+    loss_plot_x = []
     loss_plot_y = []        
     diversity_plot_x = []
     diversity_plot_y = []
@@ -61,10 +62,11 @@ def run_test(test_args, test_name):
     #Start
     for t in range(test_args.num_iter):
         cicada.run_epoch()
-        plot_x.append(t)
+        loss_plot_x.append(t)
         loss_plot_y.append(float(cicada.losses['global'].item()))
 
         if t % 10 == 0:
+            diversity_plot_x.append(t)
             # UPDATE FOR TIE
             diversity_plot_y.append(float(cicada.losses['global'].item()))
 
@@ -82,14 +84,15 @@ def run_test(test_args, test_name):
             if test_args.evo_search:
                 cicada.evo_search(test_args.num_iter, test_args)    
 
-        utils.printProgressBar(t + 1, args.num_iter, cicada.losses['global'].item())
+        
+        utils.printProgressBar(t + 1, test_args.num_iter, cicada.losses['global'].item())
 
 
-    fig_loss = px.scatter(x=plot_x, y=loss_plot_y, title=f"Loss score for {test_name}")
+    fig_loss = px.scatter(x=loss_plot_x, y=loss_plot_y, title=f"Loss score for {test_name}")
     fig_loss.update_layout(xaxis_title="Step", yaxis_title="Loss")
     fig_loss.write_image(f"tests/results/{test_name}_fig_loss.png")
 
-    fig_diversity = px.scatter(x=plot_x, y=diversity_plot_y, title=f"Diversity score for {test_name}")
+    fig_diversity = px.scatter(x=diversity_plot_x, y=diversity_plot_y, title=f"Diversity score for {test_name}")
     fig_diversity.update_layout(xaxis_title="Step", yaxis_title="TIE")
     fig_diversity.write_image(f"tests/results/{test_name}_fig_diversity.png")
 

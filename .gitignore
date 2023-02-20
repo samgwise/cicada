@@ -144,3 +144,4 @@ try_things.py
 pytorch-fid/
 
 logs/logs.sqlite
+tests/results/*

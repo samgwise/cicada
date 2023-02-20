@@ -474,6 +474,73 @@ class Cicada:
             'geometric': geo_loss,
         }
 
+    def prune(self, prune_ratio, num_augs=4):
+        with torch.no_grad():
+            # Get points of tied traces
+            fixed_points = []
+            for trace in self.drawing.traces:
+                if trace.is_fixed:
+                    fixed_points += [
+                        x.unsqueeze(0)
+                        for i, x in enumerate(trace.shape.points)
+                        if i % 3 == 0
+                    ]  # only points the path goes through
+
+            # Compute distances
+            dists = []
+            if fixed_points:
+                fixed_points = torch.cat(fixed_points, 0)
+                for trace in self.drawing.traces:
+                    if trace.is_fixed:
+                        dists.append(-1000)  # We don't remove fixed traces
+                    else:
+                        points = [
+                            x.unsqueeze(0)
+                            for i, x in enumerate(trace.shape.points)
+                            if i % 3 == 0
+                        ]  # only points the path goes through
+                        min_dists = []
+                        for point in points:
+                            d = torch.norm(point - fixed_points, dim=1)
+                            d = min(d)
+                            min_dists.append(d.item())
+
+                        dists.append(min(min_dists))
+
+            # Compute losses
+            losses = []
+            for n, trace in enumerate(self.drawing.traces):
+                if trace.is_fixed:
+                    losses.append(1000)  # We don't remove fixed traces
+                else:
+                    # Compute the loss if we take out the k-th path
+                    shapes, shape_groups = self.drawing.all_shapes_but_kth(n)
+                    img = self.build_img(5, shapes, shape_groups)
+                    img_augs = []
+                    for n in range(num_augs):
+                        img_augs.append(self.augment_trans(img))
+                    im_batch = torch.cat(img_augs)
+                    img_features = self.model.encode_image(im_batch)
+                    loss = 0
+                    for n in range(num_augs):
+                        loss -= torch.cosine_similarity(
+                            self.text_features, img_features[n : n + 1], dim=1
+                        )
+                    losses.append(loss.cpu().item())
+
+            # Compute scores
+            scores = [-0.01 * dists[k] ** (0.5) + losses[k] for k in range(len(losses))]
+
+            # Actual pruning
+            inds = utils.k_min_elements(
+                scores, int(prune_ratio * len(self.drawing.traces))
+            )
+            self.drawing.remove_traces(inds)
+
+        self.initialize_variables()
+
+
+
     def prune_drawing(self, drawing, prune_ratio):
         # TODO: refactor prune (on self) and prune drawing together
         if not drawing:

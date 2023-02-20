@@ -113,7 +113,7 @@ for trial in range(args.num_trials):
                     save_path + time_str + f'_preP_{t}.png',
                     gamma=1,
                 )
-            cicada.prune_drawing(args.prune_ratio)
+            cicada.prune(args.prune_ratio)
             args.prune_ratio += p0 / len(prune_places)
 
         if t - 1 in prune_places:

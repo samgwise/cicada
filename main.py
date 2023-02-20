@@ -27,15 +27,8 @@ save_path = Path("results/").joinpath(args.save_path)
 save_path.mkdir(parents=True, exist_ok=True)
 save_path = str(save_path) + '/'
 
-text_behaviour = TextBehaviour(device)
-text_behaviour.add_behaviour("drawing", "photo")
-text_behaviour.add_behaviour("simple", "complex")
-text_behaviour.add_behaviour("abstract", "realistic")
-
 log.event("Init", f"save_path: {save_path}", None)
-
 log.record_completion(False)
-
 
 text_behaviour = TextBehaviour(device)
 text_behaviour.add_behaviour("drawing", "photo")

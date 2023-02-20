@@ -325,6 +325,17 @@ class Cicada:
         self.drawing.remove_traces(removal_inds)
         self.add_random_shapes(len(removal_inds))
 
+    def evo_search(self, log, t, args):
+        log.event("Generation", f"Evo Search", t)
+        search_results = self.run_evolutionary_search(t, args, limit=1, generations=5, seed=10)
+        if len(search_results) > 0:
+            current_fitness = self.evo_fitness(self.drawing, t, args)
+            if search_results[0]['fitness'] > current_fitness:
+                self.drawing = search_results[0]['drawing']
+                log.event("Generation", f"Adopting new drawing from search, continueing gradient descent.", t)
+            else:
+                log.event("Generation", f"Search did not find a better drawing, continueing gradient descent.", t)
+
 
     def run_evolutionary_search(self, t, args, limit=None, seed=None, generations=3, resolution=10):
         """

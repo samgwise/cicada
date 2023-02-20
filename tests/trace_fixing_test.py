@@ -60,7 +60,7 @@ class TestTraceFixing:
 
     def test_trace_removal(self):
         cicada = Cicada(
-            device=device,
+            device=args.device,
             canvas_w=args.canvas_w,
             canvas_h=args.canvas_h,
             drawing_area=args.drawing_area,

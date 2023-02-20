@@ -3,8 +3,6 @@ import copy
 from src.config import args
 from src.drawing_model import Cicada
 
-device = torch.device('cuda:1') if torch.cuda.is_available() else 'cpu'
-
 prompt_A = 'A tall red chair.'
 prompt_B = 'A short blue chair.'
 NUM_ITER = 5
@@ -17,7 +15,7 @@ class TestPromptChange:
         # Using prompt A #################
         args.prompt = prompt_A
         cicada = Cicada(
-            device=device,
+            device=args.device,
             canvas_w=args.canvas_w,
             canvas_h=args.canvas_h,
             drawing_area=args.drawing_area,

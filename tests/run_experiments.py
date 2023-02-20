@@ -1,8 +1,7 @@
-from tests.test_suite import Test_Suite
-
-from tests.trace_fixing_test import TestTraceFixing
-from tests.prompt_change_test import TestPromptChange
-from tests.evo_search_test import TestEvoSearch
+from test_suite import Test_Suite
+from trace_fixing_test import TestTraceFixing
+from prompt_change_test import TestPromptChange
+from evo_search_test import TestEvoSearch
 
 test_suite = Test_Suite()
 
